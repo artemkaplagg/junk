@@ -14,6 +14,8 @@ import {
   TrendingUp, Users, AlertCircle, Coins
 } from 'lucide-react';
 
+import io from 'socket.io-client'; // <--- ВОТ ЭТО ВСТАВЬ СЮДА
+
 // Имитация внешних утилит (если они еще не созданы)
 const Utils = {
   formatNumber: (num) => new Intl.NumberFormat('ru-RU').format(num),
