@@ -38,9 +38,7 @@ const GLOBAL_CONFIG = {
 };
 
 const App = () => {
-  // ==========================================
-  // 1. ИНИЦИАЛИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ
-  // ==========================================
+  // 1. Данные пользователя
   const getInitialUserData = () => {
     const tg = window.Telegram?.WebApp;
     if (tg?.initDataUnsafe?.user) {
@@ -48,49 +46,113 @@ const App = () => {
         id: tg.initDataUnsafe.user.id.toString(),
         name: tg.initDataUnsafe.user.first_name || 'Player',
         username: tg.initDataUnsafe.user.username || 'unknown',
-        photo: tg.initDataUnsafe.user.photo_url || null,
-        language: tg.initDataUnsafe.user.language_code
+        photo: tg.initDataUnsafe.user.photo_url || null
       };
     }
-    // Режим разработки/тестирования
     return { id: '6185367393', name: 'Artem Admin', username: 'admin_dev', photo: null };
   };
 
   const [user, setUser] = useState(getInitialUserData());
+  const [socket, setSocket] = useState(null); 
   const isAdmin = user.id === GLOBAL_CONFIG.ADMIN_ID;
 
-  // ==========================================
-  // 2. БАЛАНС И ЭКОНОМИКА
-  // ==========================================
   const [balance, setBalance] = useState(11325);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [checkLoading, setCheckLoading] = useState(false);
   const [bonusClaimed, setBonusClaimed] = useState(false);
+  const [checkLoading, setCheckLoading] = useState(false);
 
-  // ==========================================
-  // 3. СОСТОЯНИЕ ИГРЫ (ROLL IT)
-  // ==========================================
-  const [currentTab, setCurrentTab] = useState('home'); // home, play, profile, tasks
-  const [gameState, setGameState] = useState('waiting'); // waiting, countdown, spinning, result
-  const [gameId, setGameId] = useState('#' + Math.floor(Math.random() * 90000 + 10000));
+  // 2. Состояние игры (теперь управляется сервером)
+  const [currentTab, setCurrentTab] = useState('home');
+  const [gameState, setGameState] = useState('waiting');
+  const [gameId, setGameId] = useState('#00000');
   const [players, setPlayers] = useState([]);
-  const [timer, setTimer] = useState(GLOBAL_CONFIG.TIMER_DURATION);
+  const [timer, setTimer] = useState(15);
   const [rotation, setRotation] = useState(0);
   const [winner, setWinner] = useState(null);
   
-  // Управление ставками
   const [selectedBet, setSelectedBet] = useState(100);
   const [customBetInput, setCustomBetInput] = useState('');
-  
-  // Админ-панель и модалки
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showWinModal, setShowWinModal] = useState(false);
   const [forcedWinnerId, setForcedWinnerId] = useState(null);
 
-  // Референсы для анимаций
-  const wheelRef = useRef(null);
   const timerInterval = useRef(null);
 
+  // 3. ПОДКЛЮЧЕНИЕ К СЕРВЕРУ
+  useEffect(() => {
+    const newSocket = io('https://junk-dn2k.onrender.com'); 
+    setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      console.log('Connected to LootStarsX Server');
+      newSocket.emit('auth', user);
+    });
+
+    newSocket.on('init_data', (data) => {
+       setBalance(data.user.balance);
+       setGameState(data.currentRound.status);
+       setPlayers(data.currentRound.players);
+       setTimer(data.currentRound.timer);
+       setGameId('#' + data.currentRound.gameId);
+    });
+
+    newSocket.on('update_balance', (data) => {
+      setBalance(data.balance);
+    });
+
+    newSocket.on('update_players', (serverPlayers) => {
+      setPlayers(serverPlayers);
+    });
+
+    newSocket.on('timer_tick', (timeLeft) => {
+      setTimer(timeLeft);
+      if (timeLeft > 0) setGameState('countdown');
+    });
+
+    newSocket.on('start_spin', (data) => {
+      setGameState('spinning');
+      setRotation(data.finalRotation);
+      setTimeout(() => {
+        setWinner(data.winData);
+        setShowWinModal(true);
+        setGameState('result');
+      }, 3500);
+    });
+
+    newSocket.on('reset_game', (nextId) => {
+      setPlayers([]);
+      setGameState('waiting');
+      setWinner(null);
+      setShowWinModal(false);
+      setGameId('#' + nextId);
+      setRotation(0);
+      setForcedWinnerId(null);
+    });
+
+    return () => newSocket.close();
+  }, []);
+
+  // 4. Игровые функции (через сокеты)
+  const joinGame = () => {
+    if (gameState === 'spinning' || gameState === 'result') return alert('⏳ Ждите раунд');
+    if (balance < selectedBet) return alert('💰 Мало монет');
+    socket.emit('join_game', {
+      bet: selectedBet,
+      photo: user.photo || '👤'
+    });
+  };
+
+  const spinNow = () => {
+    if (isAdmin) socket.emit('admin_force_spin');
+  };
+
+  const forceWinner = (id) => {
+    if (isAdmin) {
+      setForcedWinnerId(id);
+      socket.emit('admin_set_winner', id);
+    }
+  };
+
+  // ДАЛЕЕ В ТВОЕМ КОДЕ ДОЛЖНА ИДТИ ФУНКЦИЯ checkSubscription...
   // Продолжение следует...// ==========================================
   // 4. ЛОГИКА ПРОВЕРКИ ПОДПИСКИ (TELEGRAM BOT API)
   // ==========================================
