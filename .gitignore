@@ -1,0 +1,4 @@
+node_modules
+dist
+users_db.json
+.env
