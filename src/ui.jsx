@@ -326,245 +326,117 @@ export const HomeTab = ({ user, balance, bonusClaimed, onClaimBonus, onPlay }) =
 // ====================================================================
 
 /**
- * PlayTab - Основной игровой интерфейс рулетки
+ * PlayTab - НОВЫЙ ДИЗАЙН (Светлая тема + Центральный таймер)
  */
-export const PlayTab = ({ 
-    gameState, 
-    players, 
-    totalBank, 
-    timer, 
-    rotation, 
-    gameNumber, 
-    betAmount, 
-    setBetAmount, 
-    customBet, 
-    setCustomBet,
-    onJoin,
-    onSpinNow,
-    isAdmin 
-}) => {
-    
-    // Вспомогательный расчет для кругового таймера
-    const timerOffset = useMemo(() => {
-        const circumference = 2 * Math.PI * 45;
-        return circumference - (timer / 15) * circumference;
-    }, [timer]);
-
+export const PlayTab = ({ gameState, players, totalBank, timer, rotation, gameNumber, onJoin }) => {
     return (
-        <div className="space-y-6 animate-in zoom-in-95 duration-500 pb-20">
-            
-            {/* GAME HEADER - Информация о текущем раунде */}
-            <div className="flex justify-between items-start px-2">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                        <LSXBadge color="gray">РАУНД #{gameNumber}</LSXBadge>
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                            <ShieldCheck size={12} className="text-green-500/50" /> Provably Fair
-                        </div>
-                    </div>
-                    <h2 className="text-3xl font-black italic tracking-tighter uppercase">Roll It!</h2>
+        <div className="min-h-screen bg-[#f8faff] text-[#1a1c2e] p-4 pb-32 animate-in fade-in">
+            {/* Header как на 4 фото */}
+            <div className="flex justify-between items-center mb-8 px-2">
+                <div className="w-12 h-12 bg-[#5d5fef] rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-200">
+                    AP
                 </div>
-                
-                <div className="text-right">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Общий банк</div>
-                    <div className="text-2xl font-black text-purple-400 flex items-center justify-end gap-2">
-                        {totalBank.toLocaleString()} <Coins size={20} className="text-yellow-400" />
+                <div className="flex gap-2">
+                    <div className="bg-white px-4 py-2 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-2">
+                        <Star size={16} className="text-yellow-400" fill="currentColor"/>
+                        <span className="font-bold text-sm text-gray-600">50</span>
+                    </div>
+                    <div className="bg-[#5d5fef] px-4 py-2 rounded-2xl shadow-lg shadow-indigo-100 flex items-center gap-2 text-white">
+                        <span className="font-bold text-sm">{totalBank.toLocaleString()}</span>
+                        <Coins size={16} />
                     </div>
                 </div>
             </div>
 
-            {/* WHEEL VISUALIZER - Секция с анимированным колесом */}
-            <section className="relative py-8 flex justify-center">
-                {/* Фоновое свечение колеса */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-purple-600/10 rounded-full blur-[80px] pointer-events-none"></div>
-                
-                <div className="relative w-full max-w-[320px] aspect-square">
-                    {/* Внешнее кольцо декоративное */}
-                    <div className="absolute inset-0 border-[10px] border-white/5 rounded-full z-0"></div>
-                    
-                    {/* SVG Колесо */}
+            <h2 className="text-center text-2xl font-black italic text-[#2a2d7c] mb-6">PWP ROLL 🎰</h2>
+
+            {/* WHEEL - Белое кольцо с аватарами */}
+            <div className="relative flex justify-center mb-10">
+                <div className="relative w-72 h-72 rounded-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] p-4">
+                    {/* Указатель сверху */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-50">
+                        <div className="w-1.5 h-10 bg-[#5d5fef] rounded-full"></div>
+                    </div>
+
                     <div 
-                        className="w-full h-full transition-transform duration-[4000ms] cubic-bezier(0.15, 0, 0.15, 1) z-10 relative"
+                        className="w-full h-full transition-transform duration-[4000ms] cubic-bezier(0.15, 0, 0.15, 1)"
                         style={{ transform: `rotate(-${rotation}deg)` }}
                     >
-                        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_20px_rgba(168,85,247,0.2)]">
-                            {players.length === 0 ? (
-                                <circle cx="50" cy="50" r="48" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="1" strokeDasharray="4 2" />
-                            ) : (
-                                players.map((player, index) => {
-                                    // Расчет секторов на основе ставок
-                                    const total = players.reduce((s, p) => s + p.bet, 0);
-                                    let currentOffset = 0;
-                                    for(let j=0; j<index; j++) currentOffset += (players[j].bet / total) * 360;
-                                    
-                                    const sliceAngle = (player.bet / total) * 360;
-                                    const startAngle = currentOffset;
-                                    
-                                    const x1 = 50 + 50 * Math.cos((Math.PI * startAngle) / 180);
-                                    const y1 = 50 + 50 * Math.sin((Math.PI * startAngle) / 180);
-                                    const x2 = 50 + 50 * Math.cos((Math.PI * (startAngle + sliceAngle)) / 180);
-                                    const y2 = 50 + 50 * Math.sin((Math.PI * (startAngle + sliceAngle)) / 180);
-
-                                    const largeArcFlag = sliceAngle > 180 ? 1 : 0;
-                                    const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-
-                                    const colors = ['#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16'];
-                                    
-                                    return (
-                                        <path key={index} d={pathData} fill={colors[index % colors.length]} stroke="#0f0c1d" strokeWidth="0.8" />
-                                    );
-                                })
-                            )}
-                            {/* Центральный "глаз" колеса */}
-                            <circle cx="50" cy="50" r="14" fill="#0f0c1d" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
-                        </svg>
-                    </div>
-
-                    {/* Фиксированный указатель сверху */}
-                    <div className="absolute top-[-10px] left-1/2 -translate-x-1/2 z-30">
-                        <div className="w-8 h-10 bg-gradient-to-b from-white to-purple-300 shadow-[0_0_15px_rgba(255,255,255,0.5)]" 
-                             style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}></div>
-                    </div>
-
-                    {/* Контент внутри колеса (Таймер или Статус) */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 text-center pointer-events-none">
-                        {gameState === 'waiting' && (
-                            <div className="animate-pulse flex flex-col items-center">
-                                <Users size={20} className="text-gray-500 mb-1" />
-                                <div className="text-[8px] font-black text-gray-500 uppercase">Ждем игроков</div>
-                            </div>
-                        )}
-                        {gameState === 'countdown' && (
-                            <div className="relative flex items-center justify-center">
-                                <svg className="w-20 h-20 -rotate-90">
-                                    <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5" />
-                                    <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="4" fill="transparent" 
-                                            strokeDasharray={219.9} strokeDashoffset={(timer / 15) * 219.9}
-                                            className="text-purple-500 transition-all duration-1000" />
-                                </svg>
-                                <div className="absolute text-3xl font-black italic text-white drop-shadow-md">{timer}</div>
-                            </div>
-                        )}
-                        {gameState === 'spinning' && (
-                            <div className="text-2xl animate-spin">🎰</div>
-                        )}
-                    </div>
-                </div>
-            </section>
-
-            {/* BETTING CONTROLS - Панель управления ставками */}
-            <LSXCard glow className="space-y-6">
-                <div className="flex justify-between items-center px-2">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 italic">Сделать ставку</h3>
-                    <div className="text-[10px] font-bold text-purple-400">Мин: 5 🪙</div>
-                </div>
-
-                {/* Выбор пресетов */}
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                    {[5, 10, 50, 100, 500].map((amt) => (
-                        <button 
-                            key={amt}
-                            onClick={() => { setBetAmount(amt); setCustomBet(''); }}
-                            className={`
-                                flex-shrink-0 px-6 py-3.5 rounded-2xl font-black transition-all border-2
-                                ${betAmount === amt && !customBet 
-                                    ? 'bg-purple-600 border-purple-400 scale-105 text-white shadow-lg shadow-purple-600/20' 
-                                    : 'bg-white/5 border-transparent text-gray-500 hover:bg-white/10'}
-                            `}
-                        >
-                            {amt}
-                        </button>
-                    ))}
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="Своя..."
-                            value={customBet}
-                            onChange={(e) => {
-                                const val = e.target.value.replace(/\D/g, '');
-                                setCustomBet(val);
-                                if(val) setBetAmount(parseInt(val));
-                            }}
-                            className="bg-white/5 border-2 border-dashed border-white/10 rounded-2xl px-4 py-3.5 w-28 text-center font-bold focus:border-purple-500 outline-none transition-all placeholder:text-gray-600"
-                        />
-                    </div>
-                </div>
-
-                <LSXButton 
-                    variant="accent" 
-                    size="lg" 
-                    className="w-full"
-                    onClick={() => onJoin(betAmount)}
-                    disabled={gameState === 'spinning'}
-                >
-                    ПОСТАВИТЬ {betAmount.toLocaleString()} 🪙
-                </LSXButton>
-            </section>
-
-            {/* PLAYERS LIST - Детальный список участников */}
-            <div className="space-y-4">
-                <div className="flex justify-between items-center px-4">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Участники ({players.length})</h3>
-                    <History size={16} className="text-gray-600" />
-                </div>
-
-                <div className="space-y-3">
-                    {players.length === 0 ? (
-                        <div className="text-center py-12 border-2 border-dashed border-white/5 rounded-[2.5rem]">
-                            <div className="text-4xl mb-3 opacity-20 text-gray-500 italic">?</div>
-                            <p className="text-gray-600 font-bold text-sm italic">Ставок пока нет. Будь первым!</p>
-                        </div>
-                    ) : (
-                        players.map((player, idx) => (
-                            <div 
-                                key={idx} 
-                                className="bg-[#1a162d] border border-white/5 p-4 rounded-3xl animate-in slide-in-from-right-4 duration-300"
-                            >
-                                <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-purple-600/20 flex items-center justify-center text-xl border border-white/10 overflow-hidden shadow-inner">
-                                            {player.photo !== '👤' ? <img src={player.photo} className="w-full h-full object-cover" alt="avatar" /> : '👤'}
-                                        </div>
-                                        <div>
-                                            <div className="font-black text-sm flex items-center gap-1">
-                                                {player.name}
-                                                {player.id === isAdmin && <Crown size={12} className="text-yellow-500" />}
-                                            </div>
-                                            <div className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">
-                                                Ставка: {player.bet.toLocaleString()} 🪙
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-xl font-black text-white italic">{player.chance}%</div>
-                                        <div className="text-[8px] font-bold text-gray-500 uppercase">Шанс на победу</div>
-                                    </div>
-                                </div>
+                        <svg viewBox="0 0 100 100" className="w-full h-full">
+                            {players.map((p, i) => {
+                                const total = players.reduce((s, p) => s + p.bet, 0);
+                                let offset = 0;
+                                for(let j=0; j<i; j++) offset += (players[j].bet / total) * 360;
+                                const angle = (p.bet / total) * 360;
                                 
-                                {/* Визуальный прогресс-бар шанса */}
-                                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                    <div 
-                                        className="h-full bg-gradient-to-r from-purple-600 to-blue-500 transition-all duration-1000"
-                                        style={{ width: `${player.chance}%` }}
-                                    ></div>
+                                const x1 = 50 + 50 * Math.cos((Math.PI * offset) / 180);
+                                const y1 = 50 + 50 * Math.sin((Math.PI * offset) / 180);
+                                const x2 = 50 + 50 * Math.cos((Math.PI * (offset + angle)) / 180);
+                                const y2 = 50 + 50 * Math.sin((Math.PI * (offset + angle)) / 180);
+
+                                return (
+                                    <path 
+                                        key={i} 
+                                        d={`M 50 50 L ${x1} ${y1} A 50 50 0 ${angle > 180 ? 1 : 0} 1 ${x2} ${y2} Z`} 
+                                        fill={i % 2 === 0 ? '#5d5fef' : '#a5a6f6'} 
+                                        stroke="white" 
+                                        strokeWidth="1.5"
+                                    />
+                                );
+                            })}
+                        </svg>
+                        
+                        {/* Аватарки на колесе как стикеры */}
+                        {players.map((p, i) => {
+                            const total = players.reduce((s, p) => s + p.bet, 0);
+                            let offset = 0;
+                            for(let j=0; j<i; j++) offset += (players[j].bet / total) * 360;
+                            const angle = (p.bet / total) * 360;
+                            const midAngle = offset + (angle / 2);
+                            
+                            const x = 50 + 32 * Math.cos((Math.PI * midAngle) / 180);
+                            const y = 50 + 32 * Math.sin((Math.PI * midAngle) / 180);
+
+                            return (
+                                <div 
+                                    key={i}
+                                    className="absolute w-8 h-8 rounded-full border-2 border-white shadow-md overflow-hidden bg-white"
+                                    style={{ 
+                                        left: `${x}%`, 
+                                        top: `${y}%`, 
+                                        transform: 'translate(-50%, -50%)',
+                                        zIndex: 20
+                                    }}
+                                >
+                                    {p.photo !== '👤' ? <img src={p.photo} className="w-full h-full" /> : <div className="text-[10px] text-center mt-1">👤</div>}
                                 </div>
-                            </div>
-                        ))
-                    )}
+                            );
+                        })}
+                    </div>
+
+                    {/* Центр колеса с таймером */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-white rounded-full shadow-inner flex items-center justify-center z-40">
+                        <span className="text-3xl font-black text-[#2a2d7c] italic">
+                            {gameState === 'countdown' ? `${timer}s` : '---'}
+                        </span>
+                    </div>
                 </div>
             </div>
 
-            {/* ADMIN QUICK ACTIONS (Visible only to Admin) */}
-            {isAdmin && (
-                <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-3xl space-y-3">
-                    <div className="text-[10px] font-black text-yellow-500 uppercase tracking-widest text-center">Admin Quick Actions</div>
-                    <div className="flex gap-2">
-                        <LSXButton variant="secondary" size="sm" className="flex-1" onClick={onSpinNow}>
-                            <RefreshCw size={14} /> SPIN NOW
-                        </LSXButton>
-                    </div>
+            {/* Кнопки ставок */}
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-100 space-y-6">
+                <div className="flex gap-2 justify-center">
+                    {[5, 10, 25, 50, 100].map(val => (
+                        <button key={val} onClick={() => onJoin(val)} className="w-12 h-10 bg-[#f0f3ff] rounded-xl text-[#5d5fef] font-bold text-xs hover:bg-[#5d5fef] hover:text-white transition-all">+{val}</button>
+                    ))}
                 </div>
-            )}
+                <button 
+                   onClick={() => onJoin(500)}
+                   className="w-full bg-gradient-to-r from-[#5d5fef] to-[#8688f2] text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-indigo-100 active:scale-95 transition-all"
+                >
+                    ПОСТАВИТЬ 500 🪙
+                </button>
+            </div>
         </div>
     );
 };
