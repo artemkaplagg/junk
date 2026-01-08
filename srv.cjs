@@ -278,176 +278,27 @@ bot.launch()
     .then(() => CoreUtils.logger('info', 'Telegram Bot успешно запущен'))
     .catch((err) => CoreUtils.logger('error', `Критическая ошибка бота: ${err.message}`));
 
-//// ====================================================================
-// [7] ИГРОВОЙ ДВИЖОК ROLL IT (REAL-TIME ENGINE)
 // ====================================================================
-
-/**
- * Функция запуска обратного отсчета
- * Активируется, когда в игре 2 или более игроков
- */
-function startCountdown() {
-    if (DB.currentRound.status !== 'waiting') return;
-    
-    DB.currentRound.status = 'countdown';
-    DB.currentRound.timer = SYSTEM_CONFIG.TIMER_WAIT_SECONDS;
-    
-    CoreUtils.logger('info', `Раунд ${DB.currentRound.id}: Запуск таймера 15с`);
-    
-    DB.currentRound.timerInterval = setInterval(() => {
-        DB.currentRound.timer--;
-        
-        // Трансляция времени всем игрокам
-        io.emit('timer_tick', DB.currentRound.timer);
-        
-        if (DB.currentRound.timer <= 0) {
-            clearInterval(DB.currentRound.timerInterval);
-            executeSpin();
-        }
-    }, 1000);
-}
-
-/**
- * Логика вращения колеса и определения победителя
- */
-function executeSpin() {
-    if (DB.currentRound.status === 'spinning') return;
-    
-    DB.currentRound.status = 'spinning';
-    
-    // Генерация секретов для Provably Fair (честная игра)
-    const { secret, hash } = CoreUtils.generateGameSecrets();
-    DB.currentRound.secret = secret;
-    DB.currentRound.hash = hash;
-
-    let winnerIndex = -1;
-    const players = DB.currentRound.players;
-
-    // ПРОВЕРКА АДМИНСКОЙ ПОДКУРТКИ
-    if (DB.currentRound.forcedWinnerId) {
-        winnerIndex = players.findIndex(p => p.id === DB.currentRound.forcedWinnerId);
-        CoreUtils.logger('admin', `ВНИМАНИЕ: Применена подкрутка для игрока ${DB.currentRound.forcedWinnerId}`);
-    }
-
-    // Если админ не выбрал победителя или игрока нет в списке — считаем честно
-    if (winnerIndex === -1) {
-        winnerIndex = CoreUtils.calculateWinner(players);
-    }
-
-    const winner = players[winnerIndex];
-    const totalBank = players.reduce((sum, p) => sum + p.bet, 0);
-    
-    // Рассчитываем финальный угол остановки для фронтенда
-    // (8 полных оборотов + смещение на сектор победителя)
-    const segmentDegree = 360 / players.length;
-    const finalRotation = (8 * 360) + (winnerIndex * segmentDegree) + (segmentDegree / 2);
-
-    const winData = {
-        winnerId: winner.id,
-        winnerIndex: winnerIndex,
-        finalRotation: finalRotation,
-        winData: {
-            name: winner.name,
-            photo: winner.photo,
-            prize: totalBank,
-            chance: winner.chance
-        },
-        hash: hash
-    };
-
-    // Рассылаем сигнал всем: "КОЛЕСО КРУТИТСЯ"
-    io.emit('start_spin', winData);
-
-    // Ждем окончания анимации (3.5с на фронте + небольшой запас)
-    setTimeout(() => {
-        finalizeRound(winner, totalBank);
-    }, 4500);
-}
-
-/**
- * Завершение раунда: выдача приза и сброс состояния
- */
-function finalizeRound(winner, bank) {
-    const user = DB.users.get(winner.id);
-    if (user) {
-        user.balance += bank;
-        user.totalWins += 1;
-        // Обновляем баланс победителю в реальном времени
-        io.to(winner.id).emit('update_balance', { balance: user.balance, reason: 'win' });
-    }
-
-    CoreUtils.logger('info', `Раунд ${DB.currentRound.id} завершен. Победил: ${winner.name} | Банк: ${bank}`);
-
-    // Добавляем в историю
-    DB.currentRound.history.unshift({
-        id: DB.currentRound.id,
-        winner: winner.name,
-        bank: bank,
-        hash: DB.currentRound.hash
-    });
-    if (DB.currentRound.history.length > 10) DB.currentRound.history.pop();
-
-    // Сброс раунда через 5 секунд
-    setTimeout(() => {
-        DB.currentRound.id = Math.floor(Math.random() * 100000);
-        DB.currentRound.status = 'waiting';
-        DB.currentRound.players = [];
-        DB.currentRound.timer = SYSTEM_CONFIG.TIMER_WAIT_SECONDS;
-        DB.currentRound.forcedWinnerId = null;
-        
-        io.emit('reset_game', DB.currentRound.id);
-    }, 5000);
-}
-
+// [7] ОБНОВЛЕННЫЙ ДВИЖОК: СУММИРОВАНИЕ СТАВОК
 // ====================================================================
-// [8] ОБРАБОТКА SOCKET.IO СОБЫТИЙ (COMMUNICATION LAYER)
-// ====================================================================
+socket.on('join_game', (data) => {
+    if (!currentUserId || DB.currentRound.status === 'spinning') return;
+    
+    const user = DB.users.get(currentUserId);
+    const betAmount = parseInt(data.bet);
 
-io.on('connection', (socket) => {
-    let currentUserId = null;
+    if (!user || user.balance < betAmount || betAmount <= 0) return;
 
-    // Авторизация пользователя при подключении
-    socket.on('auth', (userData) => {
-        const uid = userData.id.toString();
-        currentUserId = uid;
-        
-        // Привязываем сокет к ID пользователя (для личных уведомлений)
-        socket.join(uid);
-        DB.activeSockets.set(uid, socket.id);
-        
-        CoreUtils.logger('info', `Socket Connected: ${uid} (Total online: ${DB.activeSockets.size})`);
-        
-        // Отправляем пользователю его текущие данные
-        if (DB.users.has(uid)) {
-            socket.emit('init_data', {
-                user: DB.users.get(uid),
-                currentRound: {
-                    status: DB.currentRound.status,
-                    players: DB.currentRound.players,
-                    timer: DB.currentRound.timer,
-                    gameId: DB.currentRound.id
-                }
-            });
-        }
-    });
+    user.balance -= betAmount;
 
-    // Обработка ставки
-    socket.on('join_game', (data) => {
-        if (!currentUserId || DB.currentRound.status === 'spinning' || DB.currentRound.status === 'result') return;
-        
-        const user = DB.users.get(currentUserId);
-        const betAmount = parseInt(data.bet);
+    // Ищем, есть ли уже этот игрок в раунде
+    let playerIndex = DB.currentRound.players.findIndex(p => p.id === currentUserId);
 
-        if (!user || user.balance < betAmount || betAmount <= 0) {
-            return socket.emit('error', 'Недостаточно средств или неверная ставка');
-        }
-
-        // Снимаем баланс
-        user.balance -= betAmount;
-        user.totalBets += betAmount;
-        user.gamesPlayed += 1;
-
-        // Добавляем в список игроков
+    if (playerIndex !== -1) {
+        // Если есть — ПЛЮСУЕМ ставку
+        DB.currentRound.players[playerIndex].bet += betAmount;
+    } else {
+        // Если нет — добавляем нового
         DB.currentRound.players.push({
             id: user.id,
             name: user.name,
@@ -455,45 +306,76 @@ io.on('connection', (socket) => {
             bet: betAmount,
             chance: 0
         });
+    }
 
-        // Пересчитываем шансы всех участников
-        DB.currentRound.players = CoreUtils.recalculateChances(DB.currentRound.players);
+    // Пересчет шансов
+    DB.currentRound.players = CoreUtils.recalculateChances(DB.currentRound.players);
+    
+    io.emit('update_players', DB.currentRound.players);
+    socket.emit('update_balance', { balance: user.balance });
 
-        // Транслируем обновленный список игроков всем
-        io.emit('update_players', DB.currentRound.players);
-        socket.emit('update_balance', { balance: user.balance, reason: 'bet' });
+    if (DB.currentRound.players.length >= 2 && DB.currentRound.status === 'waiting') {
+        startCountdown();
+    }
+});
 
-        // Если это второй игрок — запускаем таймер
-        if (DB.currentRound.players.length >= SYSTEM_CONFIG.MIN_PLAYERS_TO_START && DB.currentRound.status === 'waiting') {
-            startCountdown();
-        }
+// ====================================================================
+// [8] АДМИН-МЕНЮ В БОТЕ (ВМЕСТО САЙТА)
+// ====================================================================
+bot.command('admin', async (ctx) => {
+    if (ctx.from.id.toString() !== SYSTEM_CONFIG.ADMIN_PRIMARY_ID) return;
+
+    const adminMenu = Markup.inlineKeyboard([
+        [Markup.button.callback('🎰 Крутить сейчас', 'admin_spin')],
+        [Markup.button.callback('🎯 Выбрать победителя', 'admin_pick_winner')],
+        [Markup.button.callback('💰 Пополнить баланс', 'admin_topup')]
+    ]);
+
+    await ctx.reply('👑 *LootStarsX Admin Panel*\nУправление игрой через бота:', { 
+        parse_mode: 'Markdown', 
+        ...adminMenu 
     });
+});
 
-    // АДМИНСКОЕ СОБЫТИЕ: Принудительный старт
-    socket.on('admin_force_spin', () => {
-        if (currentUserId !== SYSTEM_CONFIG.ADMIN_PRIMARY_ID) return;
-        if (DB.currentRound.players.length < 2) return socket.emit('error', 'Минимум 2 игрока!');
-        
-        CoreUtils.logger('admin', `Админ ${currentUserId} принудительно запустил вращение`);
-        if (DB.currentRound.timerInterval) clearInterval(DB.currentRound.timerInterval);
-        executeSpin();
-    });
+// Обработка кнопок админки в боте
+bot.action('admin_spin', (ctx) => {
+    if (DB.currentRound.players.length < 2) return ctx.answerCbQuery('❌ Нужно минимум 2 игрока');
+    ctx.answerCbQuery('🚀 Запускаю колесо!');
+    if (DB.currentRound.timerInterval) clearInterval(DB.currentRound.timerInterval);
+    executeSpin();
+});
 
-    // АДМИНСКОЕ СОБЫТИЕ: Выбор победителя
-    socket.on('admin_set_winner', (targetId) => {
-        if (currentUserId !== SYSTEM_CONFIG.ADMIN_PRIMARY_ID) return;
-        DB.currentRound.forcedWinnerId = targetId;
-        CoreUtils.logger('admin', `Админ установил победу для ID: ${targetId}`);
-        socket.emit('admin_notif', `Победитель установлен: ${targetId}`);
-    });
+bot.action('admin_pick_winner', async (ctx) => {
+    if (DB.currentRound.players.length === 0) return ctx.answerCbQuery('❌ В игре никого нет');
+    
+    const buttons = DB.currentRound.players.map(p => [
+        Markup.button.callback(`${p.name} (${p.bet} 🪙)`, `force_${p.id}`)
+    ]);
+    
+    await ctx.reply('Выберите, кто должен победить:', Markup.inlineKeyboard(buttons));
+});
 
-    // Обработка отключения
-    socket.on('disconnect', () => {
-        if (currentUserId) {
-            DB.activeSockets.delete(currentUserId);
-            CoreUtils.logger('info', `Socket Disconnected: ${currentUserId}`);
-        }
-    });
+bot.action(/force_(.+)/, (ctx) => {
+    const targetId = ctx.match[1];
+    DB.currentRound.forcedWinnerId = targetId;
+    ctx.answerCbQuery(`✅ Победа настроена для ID ${targetId}`);
+});
+
+// Пополнение по ID через команду: /give [ID] [сумма]
+bot.command('give', (ctx) => {
+    const parts = ctx.message.text.split(' ');
+    if (parts.length < 3) return ctx.reply('Используй: /give [ID] [Сумма]');
+    const targetId = parts[1];
+    const amount = parseInt(parts[2]);
+    
+    if (DB.users.has(targetId)) {
+        const u = DB.users.get(targetId);
+        u.balance += amount;
+        io.to(targetId).emit('update_balance', { balance: u.balance });
+        ctx.reply(`✅ Зачислено ${amount} пользователю ${u.name}`);
+    } else {
+        ctx.reply('❌ ID не найден');
+    }
 });
 
 //// ====================================================================
