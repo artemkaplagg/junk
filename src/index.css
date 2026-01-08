@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0f0c1d;
+  color: white;
+  overflow-x: hidden;
+}
+
+/* Стили для плавного скролла */
+::-webkit-scrollbar {
+  width: 0px;
+}
