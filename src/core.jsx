@@ -1,14 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { 
-  Star, Trophy, User, Home, Gamepad2, PlusCircle, Bell, 
-  CheckCircle2, ExternalLink, Wallet, Navigation, Info, 
-  ShieldCheck, Zap, RefreshCw, TrendingUp, Users, AlertCircle, Coins
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-
-const Utils = {
-  formatNumber: (num) => new Intl.NumberFormat('ru-RU').format(num),
-};
+import { 
+  HomeTab, PlayTab, ProfileTab, 
+  BottomNav, WinModal, GlobalStyles,
+  LeaderboardTab, NotificationHub, SplashLoader
+} from './ui';
 
 const GLOBAL_CONFIG = {
   ADMIN_ID: '6185367393',
@@ -18,6 +14,10 @@ const GLOBAL_CONFIG = {
 };
 
 const App = () => {
+  const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState(null);
+  const [currentTab, setCurrentTab] = useState('home');
+  
   const getInitialUserData = () => {
     const tg = window.Telegram?.WebApp;
     if (tg?.initDataUnsafe?.user) {
@@ -31,14 +31,8 @@ const App = () => {
     return { id: '6185367393', name: 'Artem Admin', username: 'admin_dev', photo: null };
   };
 
-  const [user, setUser] = useState(getInitialUserData());
-  const [socket, setSocket] = useState(null); 
+  const [user] = useState(getInitialUserData());
   const [balance, setBalance] = useState(0);
-  const [bonusClaimed, setBonusClaimed] = useState(false);
-  const [checkLoading, setCheckLoading] = useState(false);
-
-  // Состояние игры
-  const [currentTab, setCurrentTab] = useState('home');
   const [gameState, setGameState] = useState('waiting');
   const [gameId, setGameId] = useState('#00000');
   const [players, setPlayers] = useState([]);
@@ -48,11 +42,13 @@ const App = () => {
   const [showWinModal, setShowWinModal] = useState(false);
 
   useEffect(() => {
-    const newSocket = io('https://junk-dn2k.onrender.com'); 
+    const newSocket = io('https://junk-dn2k.onrender.com');
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
+      console.log('Connected to Server');
       newSocket.emit('auth', user);
+      setTimeout(() => setLoading(false), 2000);
     });
 
     newSocket.on('init_data', (data) => {
@@ -60,17 +56,11 @@ const App = () => {
        setGameState(data.currentRound.status);
        setPlayers(data.currentRound.players);
        setTimer(data.currentRound.timer);
-       setGameId('#' + data.currentRound.gameId);
+       setGameId('#' + data.currentRound.id);
     });
 
-    newSocket.on('update_balance', (data) => {
-      setBalance(data.balance);
-    });
-
-    newSocket.on('update_players', (serverPlayers) => {
-      setPlayers(serverPlayers);
-    });
-
+    newSocket.on('update_balance', (data) => setBalance(data.balance));
+    newSocket.on('update_players', (serverPlayers) => setPlayers(serverPlayers));
     newSocket.on('timer_tick', (timeLeft) => {
       setTimer(timeLeft);
       if (timeLeft > 0) setGameState('countdown');
@@ -96,56 +86,44 @@ const App = () => {
     });
 
     return () => newSocket.close();
-  }, []);
+  }, [user]);
 
   const joinGame = (amount) => {
-    if (gameState === 'spinning' || gameState === 'result') return alert('⏳ Ждите раунд');
+    if (gameState === 'spinning') return alert('⏳ Идет вращение');
     if (balance < amount) return alert('💰 Мало монет');
-    if (socket) {
-      socket.emit('join_game', {
-        bet: amount,
-        photo: user.photo || '👤'
-      });
-    }
+    socket?.emit('join_game', { bet: amount, photo: user.photo || '👤' });
   };
 
-  const checkSubscription = async () => {
-    setCheckLoading(true);
-    try {
-      const response = await fetch(`https://api.telegram.org/bot${GLOBAL_CONFIG.BOT_TOKEN}/getChatMember?chat_id=@LootstarsX&user_id=${user.id}`);
-      const data = await response.json();
-      if (data.ok && ['member', 'administrator', 'creator'].includes(data.result.status)) {
-        if (!bonusClaimed) {
-          setBalance(prev => prev + GLOBAL_CONFIG.BONUS_AMOUNT);
-          setBonusClaimed(true);
-          alert('✅ Подписка подтверждена!');
-        }
-      } else {
-        alert('❌ Вы не подписаны');
-      }
-    } catch (e) {
-      alert('⚠️ Ошибка API');
-    } finally {
-      setCheckLoading(false);
-    }
-  };
-
-  // ==========================================
-  // ТУТ МЫ ИМПОРТИРУЕМ НОВЫЙ ДИЗАЙН ИЗ UI.JSX
-  // ==========================================
-  // Вместо того чтобы писать верстку здесь, 
-  // мы будем использовать компоненты из твоего ui.jsx
+  if (loading) return <SplashLoader />;
 
   return (
-    <div className="min-h-screen bg-[#f8faff]">
-      {/* 
-        Здесь будет вызов PlayTab из ui.jsx 
-        Я скину обновленный ui.jsx в следующем сообщении 
-      */}
-      <div className="p-4 text-center">
-         Загрузка LootStarsX... (Проверь ui.jsx)
+    <>
+      <GlobalStyles />
+      <div className="min-h-screen bg-[#f8faff] pb-32">
+        {currentTab === 'home' && (
+          <HomeTab user={user} balance={balance} onPlay={() => setCurrentTab('play')} />
+        )}
+        {currentTab === 'play' && (
+          <PlayTab 
+            gameState={gameState} 
+            players={players} 
+            totalBank={players.reduce((s, p) => s + p.bet, 0)}
+            timer={timer} 
+            rotation={rotation} 
+            gameNumber={gameId} 
+            onJoin={joinGame} 
+          />
+        )}
+        {currentTab === 'profile' && (
+          <ProfileTab user={user} balance={balance} stats={{wins: 0, games: 0}} />
+        )}
+        
+        {showWinModal && winner && (
+          <WinModal winner={winner} onClose={() => setShowWinModal(false)} />
+        )}
+        <BottomNav activeTab={currentTab} setTab={setCurrentTab} />
       </div>
-    </div>
+    </>
   );
 };
 
