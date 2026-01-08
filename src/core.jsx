@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { 
-  HomeTab, PlayTab, ProfileTab, 
-  BottomNav, WinModal, GlobalStyles,
-  LeaderboardTab, NotificationHub, SplashLoader
+  HomeTab, PlayTab, ProfileTab, BottomNav, WinModal, 
+  GlobalStyles, InstructionModal, SplashLoader, CrashGamePreview
 } from './ui';
 
 const GLOBAL_CONFIG = {
@@ -17,7 +16,8 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [socket, setSocket] = useState(null);
   const [currentTab, setCurrentTab] = useState('home');
-  
+  const [showInstructions, setShowInstructions] = useState(true);
+
   const getInitialUserData = () => {
     const tg = window.Telegram?.WebApp;
     if (tg?.initDataUnsafe?.user) {
@@ -34,7 +34,6 @@ const App = () => {
   const [user] = useState(getInitialUserData());
   const [balance, setBalance] = useState(0);
   const [gameState, setGameState] = useState('waiting');
-  const [gameId, setGameId] = useState('#00000');
   const [players, setPlayers] = useState([]);
   const [timer, setTimer] = useState(0);
   const [rotation, setRotation] = useState(0);
@@ -46,7 +45,6 @@ const App = () => {
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      console.log('Connected to Server');
       newSocket.emit('auth', user);
       setTimeout(() => setLoading(false), 2000);
     });
@@ -56,7 +54,6 @@ const App = () => {
        setGameState(data.currentRound.status);
        setPlayers(data.currentRound.players);
        setTimer(data.currentRound.timer);
-       setGameId('#' + data.currentRound.id);
     });
 
     newSocket.on('update_balance', (data) => setBalance(data.balance));
@@ -76,12 +73,11 @@ const App = () => {
       }, 3500);
     });
 
-    newSocket.on('reset_game', (nextId) => {
+    newSocket.on('reset_game', () => {
       setPlayers([]);
       setGameState('waiting');
       setWinner(null);
       setShowWinModal(false);
-      setGameId('#' + nextId);
       setRotation(0);
     });
 
@@ -89,7 +85,7 @@ const App = () => {
   }, [user]);
 
   const joinGame = (amount) => {
-    if (gameState === 'spinning') return alert('⏳ Идет вращение');
+    if (gameState === 'spinning') return alert('⏳ Идет спин');
     if (balance < amount) return alert('💰 Мало монет');
     socket?.emit('join_game', { bet: amount, photo: user.photo || '👤' });
   };
@@ -99,23 +95,16 @@ const App = () => {
   return (
     <>
       <GlobalStyles />
+      {showInstructions && <InstructionModal onClose={() => setShowInstructions(false)} />}
       <div className="min-h-screen bg-[#f8faff] pb-32">
         {currentTab === 'home' && (
           <HomeTab user={user} balance={balance} onPlay={() => setCurrentTab('play')} />
         )}
         {currentTab === 'play' && (
-          <PlayTab 
-            gameState={gameState} 
-            players={players} 
-            totalBank={players.reduce((s, p) => s + p.bet, 0)}
-            timer={timer} 
-            rotation={rotation} 
-            gameNumber={gameId} 
-            onJoin={joinGame} 
-          />
+          <PlayTab gameState={gameState} players={players} totalBank={players.reduce((s, p) => s + p.bet, 0)} timer={timer} rotation={rotation} onJoin={joinGame} />
         )}
         {currentTab === 'profile' && (
-          <ProfileTab user={user} balance={balance} stats={{wins: 0, games: 0}} />
+          <ProfileTab user={user} balance={balance} />
         )}
         
         {showWinModal && winner && (
