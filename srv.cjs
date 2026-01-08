@@ -168,7 +168,7 @@ bot.start(async (ctx) => {
         `🎰 Участвуй в быстрых раундах Roll It и выигрывай банк!`;
 
     const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp('🎮 Играть в LootStarsX', 'https://your-netlify-app.netlify.app')],
+        [Markup.button.webApp('🎮 Играть в LootStarsX', 'https://lootstarsio.netlify.app/')],
         [Markup.button.url('📢 Наш канал', 'https://t.me/LootstarsX')],
         [Markup.button.callback('🎁 Забрать бонус 50 🪙', 'claim_bonus')]
     ]);
